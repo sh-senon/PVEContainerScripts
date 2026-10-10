@@ -4,12 +4,12 @@ set -Eeuo pipefail
 APP="Wardrowbe"
 VERSION="1.10.3"
 TAG="wardrowbe-v${VERSION}"
-HOSTNAME="wardrowbe"
-CORES="4"
-RAM="8192"
-SWAP="2048"
-DISK="40"
-BRIDGE="vmbr0"
+CT_HOSTNAME="${CT_HOSTNAME:-wardrowbe}"
+CORES="${CORES:-4}"
+RAM="${RAM:-8192}"
+SWAP="${SWAP:-2048}"
+DISK="${DISK:-40}"
+BRIDGE="${BRIDGE:-vmbr0}"
 
 if [[ $EUID -ne 0 ]]; then
   echo "ERROR: Run this as root on the Proxmox host."
@@ -23,20 +23,32 @@ for cmd in pct pveam pvesm pvesh openssl; do
   }
 done
 
+if [[ ! -d "/sys/class/net/${BRIDGE}" ]]; then
+  echo "ERROR: Network bridge '${BRIDGE}' does not exist on this host."
+  echo "Available Linux bridges:"
+  for netdev in /sys/class/net/*; do
+    if [[ -d "${netdev}/bridge" ]]; then
+      echo "  ${netdev##*/}"
+    fi
+  done
+  echo "Run with a different bridge, for example: BRIDGE=vmbr1 bash -c \"\$(curl -fsSL URL)\""
+  exit 1
+fi
+
 CTID="$(pvesh get /cluster/nextid)"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 echo "Creating ${APP} in LXC ${CTID}..."
 
-TEMPLATE_STORAGE="$(pvesm status -content vztmpl | awk 'NR>1 && $3=="active" {print $1; exit}')"
+TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-$(pvesm status -content vztmpl | awk 'NR>1 && $3=="active" {print $1; exit}')}"
 
 if [[ -z "$TEMPLATE_STORAGE" ]]; then
   echo "ERROR: No active storage with vztmpl content support was found."
   exit 1
 fi
 
-CONTAINER_STORAGE="$(pvesm status -content rootdir | awk 'NR>1 && $3=="active" && $1=="local-lvm" {print $1; exit}')"
+CONTAINER_STORAGE="${CONTAINER_STORAGE:-$(pvesm status -content rootdir | awk 'NR>1 && $3=="active" && $1=="local-lvm" {print $1; exit}')}"
 
 if [[ -z "$CONTAINER_STORAGE" ]]; then
   CONTAINER_STORAGE="$(pvesm status -content rootdir | awk 'NR>1 && $3=="active" {print $1; exit}')"
@@ -70,6 +82,19 @@ if [[ -z "$TEMPLATE" ]]; then
   exit 1
 fi
 
+case "$TEMPLATE" in
+  *_"${ARCH}".tar.*) ;;
+  *)
+    echo "ERROR: Template architecture does not match host architecture."
+    echo "Host architecture: ${ARCH}"
+    echo "Selected template: ${TEMPLATE}"
+    exit 1
+    ;;
+esac
+
+echo "Host architecture: ${ARCH}"
+echo "Selected template: ${TEMPLATE}"
+
 if ! pveam list "$TEMPLATE_STORAGE" 2>/dev/null | grep -Fq "$TEMPLATE"; then
   echo "Downloading ${TEMPLATE}..."
   pveam download "$TEMPLATE_STORAGE" "$TEMPLATE"
@@ -78,7 +103,8 @@ fi
 echo "Creating LXC..."
 
 pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
-  --hostname "$HOSTNAME" \
+  --hostname "$CT_HOSTNAME" \
+  --arch "$ARCH" \
   --cores "$CORES" \
   --memory "$RAM" \
   --swap "$SWAP" \
@@ -89,7 +115,16 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --features nesting=1 \
   --onboot 1
 
-pct start "$CTID"
+if ! pct start "$CTID"; then
+  echo
+  echo "ERROR: LXC ${CTID} failed to start. Detailed diagnostics follow:"
+  echo
+  pct start "$CTID" --debug || true
+  echo
+  echo "The failed container was kept for diagnosis. Remove it with:"
+  echo "  pct destroy ${CTID} --purge"
+  exit 1
+fi
 
 echo "Waiting for network..."
 
