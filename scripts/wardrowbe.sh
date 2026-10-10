@@ -49,13 +49,24 @@ fi
 
 pveam update >/dev/null
 
+ARCH="$(dpkg --print-architecture)"
+
+case "$ARCH" in
+  amd64|arm64) ;;
+  *)
+    echo "ERROR: Unsupported Proxmox host architecture: ${ARCH}"
+    exit 1
+    ;;
+esac
+
 TEMPLATE="$(pveam available --section system \
-  | awk '/debian-13-standard/ {print $2}' \
+  | awk -v arch="$ARCH" \
+      'index($2, "debian-13-standard") && index($2, "_" arch ".tar") {print $2}' \
   | sort -V \
   | tail -n1)"
 
 if [[ -z "$TEMPLATE" ]]; then
-  echo "ERROR: No Debian 13 amd64 LXC template was found."
+  echo "ERROR: No Debian 13 ${ARCH} LXC template was found."
   exit 1
 fi
 
