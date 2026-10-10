@@ -1,4 +1,4 @@
-bash <<'EOF'
+#!/usr/bin/env bash
 set -Eeuo pipefail
 
 APP="Wardrowbe"
@@ -395,4 +395,3 @@ echo "http://${IP}:3000"
 echo
 echo "Click Login to enter Wardrowbe."
 echo
-EOF
