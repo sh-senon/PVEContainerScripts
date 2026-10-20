@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.0.0
+version: 1.1.0
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -19,6 +19,7 @@ class Tools:
     TOKEN_FILE = Path("/etc/obsi-write-token")
     MAX_IMAGE = 10 * 1024 * 1024
     UPLOAD_ROOT = Path("/var/lib/obsi-webui/uploads")
+    FILE_ID_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(?![0-9a-fA-F])")
 
     @classmethod
     def _request(cls, operation, **kwargs):
@@ -96,50 +97,84 @@ class Tools:
                                expected_sha256=original["sha256"])
         return f"Approved update saved: {result['path']}."
 
+    @staticmethod
+    def _is_image(raw):
+        return bool(raw) and (raw.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a"))
+                or (len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"))
+
     @classmethod
-    def _images(cls, metadata, files, user):
+    async def _images(cls, metadata, files, user):
+        """Resolve images from the CURRENT message only; verify ownership in Open WebUI DB."""
+        from open_webui.models.files import Files
+
+        metadata = metadata if isinstance(metadata, dict) else {}
+        user_id = (user or {}).get("id")
+        if not user_id:
+            return []
+        latest = metadata.get("user_message")
         candidates = []
-        # Images pasted into chat arrive in the most recent user message.
-        latest = (metadata or {}).get("user_message") or {}
-        contents = latest.get("content", []) if isinstance(latest, dict) else []
-        if not isinstance(contents, list):
-            contents = []
-        for block in contents:
-            if not isinstance(block, dict) or block.get("type") != "image_url":
+        referenced_ids = []
+
+        def add_reference(value):
+            if isinstance(value, str):
+                match = cls.FILE_ID_RE.search(value)
+                if match:
+                    referenced_ids.append(match.group().lower())
+
+        # Preserve inline images when Open WebUI supplies base64 pixels.
+        blocks = latest.get("content", []) if isinstance(latest, dict) else []
+        for block in blocks if isinstance(blocks, list) else []:
+            if not isinstance(block, dict):
                 continue
-            image_url = block.get("image_url", {})
-            uri = image_url.get("url") if isinstance(image_url, dict) else image_url
-            if isinstance(uri, str) and uri.startswith("data:image/") and ";base64," in uri[:90]:
-                encoded = uri.split(";base64,", 1)[1]
-                if len(encoded) > cls.MAX_IMAGE * 2:
-                    continue
-                try:
-                    raw = base64.b64decode(encoded, validate=True)
-                except (ValueError, base64.binascii.Error):
-                    continue
-                if len(raw) <= cls.MAX_IMAGE:
-                    candidates.append(raw)
-        # Files explicitly attached through the uploader live in local storage.
-        for item in files or []:
-            entry = item.get("file", {}) if isinstance(item, dict) else {}
-            if not isinstance(entry, dict):
+            if block.get("type") == "image_url":
+                image_url = block.get("image_url", {})
+                uri = image_url.get("url") if isinstance(image_url, dict) else image_url
+                if isinstance(uri, str) and uri.startswith("data:image/") and ";base64," in uri[:90]:
+                    encoded = uri.split(";base64,", 1)[1]
+                    if len(encoded) <= cls.MAX_IMAGE * 2:
+                        try:
+                            raw = base64.b64decode(encoded, validate=True)
+                            if len(raw) <= cls.MAX_IMAGE and cls._is_image(raw):
+                                candidates.append(raw)
+                        except (ValueError, base64.binascii.Error):
+                            pass
+                else:
+                    add_reference(uri)
+            elif block.get("type") in ("file", "image"):
+                add_reference(block.get("id"))
+                add_reference(block.get("url"))
+
+        # Open WebUI may send uploaded images as file IDs or URL references.
+        # Never resolve IDs mentioned in prose or from older chat messages.
+        attached = []
+        for source in (files, metadata.get("files"), latest.get("files") if isinstance(latest, dict) else None):
+            if isinstance(source, list):
+                attached.extend(source)
+        for item in attached:
+            if not isinstance(item, dict):
                 continue
-            if entry.get("user_id") != (user or {}).get("id"):
+            entry = item.get("file")
+            if isinstance(entry, dict):
+                add_reference(entry.get("id"))
+            add_reference(item.get("id"))
+            add_reference(item.get("url"))
+
+        for file_id in dict.fromkeys(referenced_ids):
+            file_record = await Files.get_file_by_id_and_user_id(file_id, user_id)
+            if file_record is None or not isinstance(file_record.path, str):
                 continue
-            p = entry.get("path", "")
-            if not isinstance(p, str):
-                continue
-            original = Path(p)
+            original = Path(file_record.path)
             if original.is_symlink():
                 continue
             resolved = original.resolve(strict=False)
             if not resolved.is_relative_to(cls.UPLOAD_ROOT.resolve(strict=False)):
                 continue
+            if not resolved.name.lower().startswith(file_id + "_"):
+                continue
             if not resolved.is_file() or resolved.stat().st_size > cls.MAX_IMAGE:
                 continue
             raw = resolved.read_bytes()
-            if raw.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a")) or (
-                    len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"):
+            if cls._is_image(raw):
                 candidates.append(raw)
         return candidates
 
@@ -157,7 +192,7 @@ class Tools:
         :param description: Brief factual description of the screenshot.
         :param image_index: Zero-based index of an image uploaded in this user turn.
         """
-        images = self._images(__metadata__, __files__, __user__)
+        images = await self._images(__metadata__, __files__, __user__)
         if not images:
             return ("I cannot access original screenshot bytes in this tool call. "
                     "Please paste or upload the image in the same chat message as the request.")
