@@ -93,8 +93,8 @@ WORK="$(mktemp -d /root/obsi-hybrid.XXXXXX)"
 chmod 700 "$WORK"
 
 say 'Backing up tunnel authorization and service definitions inside LXCs'
-pct exec "$CT_KB" -- cp -a /home/obsi-tunnel/.ssh/authorized_keys +  /home/obsi-tunnel/.ssh/authorized_keys.obsi-prewrite
-pct exec "$CT_UI" -- cp -a /etc/systemd/system/obsi-mcp-tunnel.service +  /etc/systemd/system/obsi-mcp-tunnel.service.obsi-prewrite
+pct exec "$CT_KB" -- cp -a /home/obsi-tunnel/.ssh/authorized_keys /home/obsi-tunnel/.ssh/authorized_keys.obsi-prewrite
+pct exec "$CT_UI" -- cp -a /etc/systemd/system/obsi-mcp-tunnel.service /etc/systemd/system/obsi-mcp-tunnel.service.obsi-prewrite
 
 say 'Installing authenticated write server in CT 133'
 pct exec "$CT_KB" -- install -d -m 0750 /opt/obsi-write
@@ -166,7 +166,7 @@ cat > "$WORK/20-obsi-write.conf" <<'UNIT'
 ExecStart=
 ExecStart=/usr/bin/ssh -NT -i /root/.ssh/obsi_mcp -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:18766:127.0.0.1:8766 -L 127.0.0.1:18767:127.0.0.1:8767 obsi-tunnel@10.69.69.110
 UNIT
-pct push "$CT_UI" "$WORK/20-obsi-write.conf" +  /etc/systemd/system/obsi-mcp-tunnel.service.d/20-obsi-write.conf
+pct push "$CT_UI" "$WORK/20-obsi-write.conf" /etc/systemd/system/obsi-mcp-tunnel.service.d/20-obsi-write.conf
 pct exec "$CT_UI" -- systemctl daemon-reload
 pct exec "$CT_UI" -- systemctl restart obsi-mcp-tunnel
 pct exec "$CT_UI" -- systemctl is-active --quiet obsi-mcp-tunnel ||
