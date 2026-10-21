@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.8.0
+version: 1.9.0
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -483,3 +483,155 @@ class Tools:
         if report.get("mode") != "read_only":
             return "Incident lookup failed: read-only mode not confirmed."
         return json.dumps(report, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _incident_path(environment: str, title: str) -> str:
+        if environment not in ("Work", "Homelab"):
+            raise ValueError("Environment must be Work or Homelab.")
+        if not isinstance(title, str) or not 3 <= len(title.strip()) <= 100:
+            raise ValueError("Incident title must contain 3 to 100 characters.")
+        clean = re.sub(r"[^a-zA-Z0-9 ._()-]", "", title).strip(" .")
+        if not clean or clean in (".", ".."):
+            raise ValueError("Incident title contains no usable filename.")
+        return f"{environment}/Incidents/{clean}.md"
+
+    async def start_incident(
+        self, title: str, symptoms: str, affected_systems: str,
+        environment: str = "Work", observed_at: str = "Unknown",
+    ) -> str:
+        """
+        Create a new structured incident in Work/Incidents or Homelab/Incidents.
+        Never create a second note if the chosen incident path already exists.
+
+        :param title: Short incident title without secrets, e.g. ELO preview unavailable.
+        :param symptoms: Observed errors and business impact; do not invent root cause.
+        :param affected_systems: Known hosts and services, including qualified wikilinks when verified.
+        :param environment: Work or Homelab.
+        :param observed_at: Actual first-observed date/time, or Unknown.
+        """
+        path = self._incident_path(environment, title)
+        for field in (symptoms, affected_systems, observed_at):
+            if not isinstance(field, str) or len(field) > 8000:
+                raise ValueError("Invalid incident field.")
+        if not symptoms.strip():
+            return "Incident not created: symptoms are required."
+        # Never silently overwrite; existing incidents must use approved updates.
+        if self._request("inspect", path=path)["exists"]:
+            return f"Incident already exists: {path}. Search and update it instead."
+        from datetime import date
+        today = date.today().isoformat()
+        content = (
+            f"---\\nenvironment: {environment}\\ntype: incident\\n"
+            f"status: investigating\\nresolution-status: unverified\\n"
+            f"last-updated: {today}\\nlast-verified:\\nrelated: []\\n---\\n\\n"
+            f"# Incident: {title.strip()}\\n\\n"
+            f"## Symptoms\\n{symptoms.strip()}\\n\\n"
+            f"## First observed\\n{observed_at.strip() or 'Unknown'}\\n\\n"
+            f"## Affected systems\\n{affected_systems.strip() or 'Unknown'}\\n\\n"
+            f"## Investigation\\nNo investigation steps recorded yet.\\n\\n"
+            f"## Attempts\\nNo remediation attempts recorded yet.\\n\\n"
+            f"## Root cause\\nUnknown.\\n\\n"
+            f"## Resolution\\nNot confirmed.\\n\\n"
+            f"## Verification\\nNot performed.\\n\\n"
+            f"## Follow-up\\nNone recorded.\\n"
+        )
+        return await self.create_new_note(path=path, content=content)
+
+    async def record_incident_progress(
+        self, path: str, observation: str, action: str = "",
+        outcome: str = "", recorded_at: str = "Not specified",
+        __event_call__=None, __metadata__=None,
+    ) -> str:
+        """
+        Record an investigation or attempted fix with approval. Never call an
+        attempted remediation a confirmed resolution.
+
+        :param path: Existing Work/Incidents/ or Homelab/Incidents/ Markdown path.
+        :param observation: What was actually observed.
+        :param action: Troubleshooting command or action, if any.
+        :param outcome: Observed result, including failures or unknown status.
+        :param recorded_at: Actual timestamp supplied by user, or Not specified.
+        """
+        if not isinstance(path, str) or not (
+            path.startswith("Work/Incidents/") or path.startswith("Homelab/Incidents/")
+        ) or not path.endswith(".md"):
+            return "Only existing Work/Incidents or Homelab/Incidents notes can be updated."
+        if not isinstance(observation, str) or not observation.strip():
+            return "Provide a factual observation."
+        for value in (observation, action, outcome, recorded_at):
+            if not isinstance(value, str) or len(value) > 5000:
+                return "Invalid or oversized incident progress field."
+        original = self._request("inspect", path=path)
+        if not original["exists"]:
+            return "Incident note not found. Use start_incident first."
+        content = original["content"]
+        if not re.search(r"(?m)^type:\\s*incident\\s*$", content):
+            return "Refusing to update a note not marked type: incident."
+        from datetime import date
+        entry = (
+            f"\\n### {recorded_at.strip() or 'Not specified'}\\n"
+            f"- Observation: {observation.strip()}\\n"
+            f"- Action: {action.strip() or 'None recorded'}\\n"
+            f"- Outcome: {outcome.strip() or 'Not yet known'}\\n"
+        )
+        heading = "## Investigation"
+        if heading not in content:
+            return "Incident note has no Investigation section; propose a manual update."
+        next_section = re.search(r"(?m)^## ", content[content.index(heading) + len(heading):])
+        insert = (content.index(heading) + len(heading) + next_section.start()
+                  if next_section else len(content))
+        revised = content[:insert].rstrip() + "\\n" + entry + "\\n" + content[insert:].lstrip("\\n")
+        revised = re.sub(r"(?m)^last-updated:.*$", f"last-updated: {date.today().isoformat()}", revised, count=1)
+        return await self.propose_note_update(path=path, revised_content=revised,
+                                              __event_call__=__event_call__, __metadata__=__metadata__)
+
+    async def resolve_incident(
+        self, path: str, root_cause: str, resolution: str,
+        verification: str, verified_at: str,
+        __event_call__=None, __metadata__=None,
+    ) -> str:
+        """
+        Propose closing an incident only when a completed fix and verification
+        evidence are provided. Show a full diff and require live user approval.
+
+        :param path: Existing Work/Incidents/ or Homelab/Incidents/ note.
+        :param root_cause: Confirmed cause, or explicitly Unknown.
+        :param resolution: Fix actually applied and its outcome.
+        :param verification: Concrete successful test or operational evidence.
+        :param verified_at: Date of verification in YYYY-MM-DD, based on actual evidence.
+        """
+        if not isinstance(path, str) or not (
+            path.startswith("Work/Incidents/") or path.startswith("Homelab/Incidents/")
+        ) or not path.endswith(".md"):
+            return "Invalid incident path."
+        fields = (root_cause, resolution, verification, verified_at)
+        if any(not isinstance(x, str) or not x.strip() or len(x) > 8000 for x in fields):
+            return "A recorded root cause (Unknown allowed), resolution, verification and date are required."
+        from datetime import date
+        try:
+            actual_day = date.fromisoformat(verified_at)
+            if actual_day > date.today():
+                return "Verification date cannot be in the future."
+        except ValueError:
+            return "verified_at must be YYYY-MM-DD."
+        original = self._request("inspect", path=path)
+        if not original["exists"]:
+            return "Incident not found."
+        content = original["content"]
+        if not re.search(r"(?m)^type:\\s*incident\\s*$", content):
+            return "Not an incident note."
+        def replace_section(body, heading, replacement):
+            pattern = re.compile(r"(?ms)^## " + re.escape(heading) + r"\\n.*?(?=^## |\\Z)")
+            if not pattern.search(body):
+                raise ValueError(f"Missing {heading} section.")
+            return pattern.sub(lambda _: "## " + heading + "\\n" + replacement.strip() + "\\n\\n", body, count=1)
+        revised = content
+        revised = replace_section(revised, "Root cause", root_cause)
+        revised = replace_section(revised, "Resolution", resolution)
+        revised = replace_section(revised, "Verification", verification + "\\nVerified at: " + verified_at)
+        revised = re.sub(r"(?m)^status:.*$", "status: resolved", revised, count=1)
+        revised = re.sub(r"(?m)^resolution-status:.*$", "resolution-status: verified", revised, count=1)
+        revised = re.sub(r"(?m)^last-updated:.*$", "last-updated: " + date.today().isoformat(), revised, count=1)
+        revised = re.sub(r"(?m)^last-verified:.*$", "last-verified: " + verified_at, revised, count=1)
+        return await self.propose_note_update(path=path, revised_content=revised,
+                                              __event_call__=__event_call__, __metadata__=__metadata__)
