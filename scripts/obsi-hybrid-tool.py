@@ -244,8 +244,8 @@ class Tools:
             destination.unlink(missing_ok=True)
             return "Could not register screenshot with Open WebUI. Nothing displayed."
         image_url = "/api/v1/files/" + file_id + "/content"
-        return (f"Screenshot retrieved from {attachment_path}.\\n"
-                f"Display using this exact Markdown, without altering the URL:\\n"
+        return (f"Screenshot retrieved from {attachment_path}.\n"
+                f"Display using this exact Markdown, without altering the URL:\n"
                 f"![Saved Obsi screenshot]({image_url})")
 
     async def save_screenshot_to_note(
