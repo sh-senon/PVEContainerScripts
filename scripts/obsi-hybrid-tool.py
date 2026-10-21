@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.2.0
+version: 1.4.0
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -249,7 +249,7 @@ class Tools:
                 f"![Saved Obsi screenshot]({image_url})")
 
     async def save_screenshot_to_note(
-        self, path: str, description: str = "", image_index: int = 0,
+        self, path: str, description: str = "", image_index: int = 0, label: str = "Technical screenshot",
         __metadata__=None, __files__=None, __user__=None, __event_call__=None,
     ) -> str:
         """
@@ -261,6 +261,7 @@ class Tools:
         :param path: Markdown note path to create or add the screenshot to.
         :param description: Brief factual description of the screenshot.
         :param image_index: Zero-based index of an image uploaded in this user turn.
+        :param label: Short descriptive heading, e.g. pve03 node overview, not a generic Screenshot label.
         """
         images = await self._images(__metadata__, __files__, __user__)
         if not images:
@@ -277,7 +278,7 @@ class Tools:
             answer = await __event_call__({
                 "type": "confirmation",
                 "data": {"title": "Add screenshot to existing note?",
-                         "message": f"Note: {path}\n\nDescription: {description}\n\n"
+                         "message": f"Note: {path}\n\nHeading: {label}\nDescription: {description}\n\n"
                                     "The original image will be stored in Attachments/ and a new embed appended."}
             })
             if not self._approved(answer):
@@ -285,6 +286,7 @@ class Tools:
         result = self._request(
             "screenshot_note", path=path, description=description,
             image_base64=base64.b64encode(images[image_index]).decode("ascii"),
+            label=label,
             expected_sha256=expected,
         )
         return (f"Saved original screenshot: {result['attachment']}\n"
