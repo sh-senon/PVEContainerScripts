@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT_DEFAULT = "/srv/obsi-ai"
 TOP = ("Work", "Homelab")
-LINK = re.compile(r"!?(?:\\[\\[)([^]\\n]+)\\]\\]")
+LINK = re.compile(r'!?\[\[([^\]\n]+)\]\]')
 MAX_NOTES = 2000
 MAX_BYTES = 256 * 1024
 
@@ -69,7 +69,7 @@ def discover(root: Path):
                 continue
             if len(other["name"]) < 5:
                 continue
-            if re.search(r"(?<![\\w])" + re.escape(other["name"]) + r"(?![\\w])",
+            if re.search(r"(?<![\w])" + re.escape(other["name"]) + r"(?![\w])",
                          d["body"], flags=re.I):
                 key = (d["path"], other["path"])
                 if key not in seen:
