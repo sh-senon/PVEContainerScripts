@@ -116,7 +116,7 @@ def analyze(root):
                            'Missing last-verified is not evidence that a system is unverified.',
                            'Unqualified wiki-links are matched by note basename only.',
                            'Environment mismatch flags are conservative heuristics, not proof.',
-                           'Redirect removal requires reviewing backlinks outside this vault too.']]}
+                           'Redirect removal requires reviewing backlinks outside this vault too.']}
 
 if __name__=='__main__':
     ap=argparse.ArgumentParser()
