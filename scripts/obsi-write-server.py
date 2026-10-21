@@ -155,9 +155,9 @@ def dispatch(data: dict) -> dict:
             if not 0 < path.stat().st_size <= MAX_IMAGE:
                 raise ValueError("Invalid attachment size")
             raw = path.read_bytes()
-            if ext == ".png" and not raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+            if ext == ".png" and not raw.startswith(b"\x89PNG\r\n\x1a\n"):
                 raise ValueError("Invalid PNG")
-            if ext in (".jpg", ".jpeg") and not raw.startswith(b"\\xff\\xd8\\xff"):
+            if ext in (".jpg", ".jpeg") and not raw.startswith(b"\xff\xd8\xff"):
                 raise ValueError("Invalid JPEG")
             if ext == ".gif" and not raw.startswith((b"GIF87a", b"GIF89a")):
                 raise ValueError("Invalid GIF")
