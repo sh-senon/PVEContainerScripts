@@ -486,19 +486,19 @@ class Tools:
 
     @staticmethod
     def _incident_metadata(content: str) -> dict:
-        """Read YAML scalar metadata without relying on multiline regex matching."""
+        """Read frontmatter scalar values safely for incident validation."""
         if not isinstance(content, str):
             return {}
-        lines = content.lstrip("\\ufeff").replace("\\r\\n", "\\n").splitlines()
+        lines = content.lstrip("\ufeff").replace("\r\n", "\n").splitlines()
         if not lines or lines[0].strip() != "---":
             return {}
         fields = {}
         for line in lines[1:]:
             if line.strip() == "---":
                 break
-            match = re.match(r"^([A-Za-z][A-Za-z0-9_-]*):[ \\t]*(.*)$", line)
+            match = re.match(r"^([A-Za-z][A-Za-z0-9_-]*):[ \t]*(.*)$", line)
             if match:
-                fields[match.group(1).lower()] = match.group(2).strip().strip("\\"'")
+                fields[match.group(1).lower()] = match.group(2).strip().strip('"').strip("'")
         return fields
 
     @staticmethod
