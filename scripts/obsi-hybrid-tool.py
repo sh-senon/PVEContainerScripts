@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.9.1
+version: 1.9.2
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -538,19 +538,19 @@ class Tools:
         from datetime import date
         today = date.today().isoformat()
         content = (
-            f"---\\nenvironment: {environment}\\ntype: incident\\n"
-            f"status: investigating\\nresolution-status: unverified\\n"
-            f"last-updated: {today}\\nlast-verified:\\nrelated: []\\n---\\n\\n"
-            f"# Incident: {title.strip()}\\n\\n"
-            f"## Symptoms\\n{symptoms.strip()}\\n\\n"
-            f"## First observed\\n{observed_at.strip() or 'Unknown'}\\n\\n"
-            f"## Affected systems\\n{affected_systems.strip() or 'Unknown'}\\n\\n"
-            f"## Investigation\\nNo investigation steps recorded yet.\\n\\n"
-            f"## Attempts\\nNo remediation attempts recorded yet.\\n\\n"
-            f"## Root cause\\nUnknown.\\n\\n"
-            f"## Resolution\\nNot confirmed.\\n\\n"
-            f"## Verification\\nNot performed.\\n\\n"
-            f"## Follow-up\\nNone recorded.\\n"
+            f"---\nenvironment: {environment}\ntype: incident\n"
+            f"status: investigating\nresolution-status: unverified\n"
+            f"last-updated: {today}\nlast-verified:\nrelated: []\n---\n\n"
+            f"# Incident: {title.strip()}\n\n"
+            f"## Symptoms\n{symptoms.strip()}\n\n"
+            f"## First observed\n{observed_at.strip() or 'Unknown'}\n\n"
+            f"## Affected systems\n{affected_systems.strip() or 'Unknown'}\n\n"
+            f"## Investigation\nNo investigation steps recorded yet.\n\n"
+            f"## Attempts\nNo remediation attempts recorded yet.\n\n"
+            f"## Root cause\nUnknown.\n\n"
+            f"## Resolution\nNot confirmed.\n\n"
+            f"## Verification\nNot performed.\n\n"
+            f"## Follow-up\nNone recorded.\n"
         )
         return await self.create_new_note(path=path, content=content)
 
@@ -586,10 +586,10 @@ class Tools:
             return "Refusing to update a note not marked type: incident."
         from datetime import date
         entry = (
-            f"\\n### {recorded_at.strip() or 'Not specified'}\\n"
-            f"- Observation: {observation.strip()}\\n"
-            f"- Action: {action.strip() or 'None recorded'}\\n"
-            f"- Outcome: {outcome.strip() or 'Not yet known'}\\n"
+            f"\n### {recorded_at.strip() or 'Not specified'}\n"
+            f"- Observation: {observation.strip()}\n"
+            f"- Action: {action.strip() or 'None recorded'}\n"
+            f"- Outcome: {outcome.strip() or 'Not yet known'}\n"
         )
         heading = "## Investigation"
         if heading not in content:
@@ -597,7 +597,7 @@ class Tools:
         next_section = re.search(r"(?m)^## ", content[content.index(heading) + len(heading):])
         insert = (content.index(heading) + len(heading) + next_section.start()
                   if next_section else len(content))
-        revised = content[:insert].rstrip() + "\\n" + entry + "\\n" + content[insert:].lstrip("\\n")
+        revised = content[:insert].rstrip() + "\n" + entry + "\n" + content[insert:].lstrip("\n")
         revised = re.sub(r"(?m)^last-updated:.*$", f"last-updated: {date.today().isoformat()}", revised, count=1)
         return await self.propose_note_update(path=path, revised_content=revised,
                                               __event_call__=__event_call__, __metadata__=__metadata__)
@@ -638,17 +638,44 @@ class Tools:
         if self._incident_metadata(content).get("type", "").casefold() != "incident":
             return "Not an incident note."
         def replace_section(body, heading, replacement):
-            pattern = re.compile(r"(?ms)^## " + re.escape(heading) + r"\\n.*?(?=^## |\\Z)")
+            pattern = re.compile(r"(?ms)^## " + re.escape(heading) + r"\n.*?(?=^## |\Z)")
             if not pattern.search(body):
                 raise ValueError(f"Missing {heading} section.")
-            return pattern.sub(lambda _: "## " + heading + "\\n" + replacement.strip() + "\\n\\n", body, count=1)
+            return pattern.sub(lambda _: "## " + heading + "\n" + replacement.strip() + "\n\n", body, count=1)
         revised = content
         revised = replace_section(revised, "Root cause", root_cause)
         revised = replace_section(revised, "Resolution", resolution)
-        revised = replace_section(revised, "Verification", verification + "\\nVerified at: " + verified_at)
+        revised = replace_section(revised, "Verification", verification + "\nVerified at: " + verified_at)
         revised = re.sub(r"(?m)^status:.*$", "status: resolved", revised, count=1)
         revised = re.sub(r"(?m)^resolution-status:.*$", "resolution-status: verified", revised, count=1)
         revised = re.sub(r"(?m)^last-updated:.*$", "last-updated: " + date.today().isoformat(), revised, count=1)
         revised = re.sub(r"(?m)^last-verified:.*$", "last-verified: " + verified_at, revised, count=1)
         return await self.propose_note_update(path=path, revised_content=revised,
                                               __event_call__=__event_call__, __metadata__=__metadata__)
+
+    async def repair_incident_line_endings(
+        self, path: str, __event_call__=None, __metadata__=None,
+    ) -> str:
+        """
+        Repair only incident notes accidentally written with literal backslash-n.
+        Preserve their existing text, show a complete diff, and require approval.
+
+        :param path: Existing vault-relative .md path under Work/Incidents/ or Homelab/Incidents/.
+        """
+        if not isinstance(path, str) or not (
+            path.startswith("Work/Incidents/") or path.startswith("Homelab/Incidents/")
+        ) or not path.endswith(".md"):
+            return "Invalid incident path."
+        original = self._request("inspect", path=path)
+        if not original["exists"]:
+            return "Incident note not found."
+        content = original["content"]
+        if not content.startswith(r"---\nenvironment: "):
+            return "Not a known affected incident format. Nothing changed."
+        revised = content.replace(r"\n", "\n")
+        if self._incident_metadata(revised).get("type", "").casefold() != "incident":
+            return "Repaired content would not be an incident. Nothing changed."
+        return await self.propose_note_update(
+            path=path, revised_content=revised,
+            __event_call__=__event_call__, __metadata__=__metadata__,
+        )
