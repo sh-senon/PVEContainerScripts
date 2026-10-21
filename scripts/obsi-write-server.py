@@ -143,6 +143,15 @@ def dispatch(data: dict) -> dict:
         raise ValueError("JSON object required")
     op = data.get("operation")
     with GUARD:
+        if op == "discover_relationships":
+            scanner = Path("/opt/obsi_relationships.py")
+            if not scanner.is_file() or scanner.is_symlink():
+                raise ValueError("Relationship script not installed")
+            module = runpy.run_path(str(scanner), run_name="obsi_relationship_module")
+            result = module["discover"](ROOT)
+            if not isinstance(result, dict) or result.get("mode") != "read_only":
+                raise ValueError("Unexpected relationship response")
+            return result
         if op == "audit_knowledge_base":
             auditor = Path("/opt/obsi_audit.py")
             if not auditor.is_file() or auditor.is_symlink():
