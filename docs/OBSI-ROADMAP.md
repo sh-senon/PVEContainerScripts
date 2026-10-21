@@ -96,11 +96,23 @@ Architecture: Open WebUI UI plus MCP knowledge retrieval, an authenticated note-
 - [ ] Verified vault backup and restore.
 - [ ] Controlled Work documentation import, handover and operations guide.
 
+### P3a: Automated specialist agents (proposed, not built)
+- [ ] Knowledge Guardian: scheduled read-only vault audit and freshness report (daily).
+- [ ] Incident Detective: detect similar/repeated incidents and unverified solutions (event-triggered or daily), excluding test data.
+- [ ] Dependency Mapper: suggest evidence-backed service relationships, never assert mere co-occurrence as dependencies (weekly).
+- [ ] Change Reviewer: review a proposed diff for lost facts, unsupported edits or security leakage; does not replace human approval.
+- [ ] Start with deterministic scheduled Python jobs and stored review reports; add LLM analysis only when useful and authorized.
+- [ ] Provide job ownership, logs, error handling, deduplication, resource budgets, monitoring and manual disable switches.
+- [ ] Enforce per-environment authorization and keep confidential Work data on an approved inference path.
+- [ ] No autonomous note edits or infrastructure changes; user approval remains mandatory.
+
 ## Next actions
 
 First fix test incident handling and formatting; then test complete incident closure. Next diagnose shared knowledge access for the colleague. Then advance semantic retrieval and dependency mapping. Plan Work security before importing sensitive company material.
 
 ## Change log
+
+2026-10-21: Proposed read-only specialist agents and their security/operational safeguards; not implemented.
 
 2026-10-21: Tracker established from existing project discussions and observed tests.
 
