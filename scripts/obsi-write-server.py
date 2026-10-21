@@ -20,6 +20,7 @@ TOKEN_FILE = Path("/etc/obsi-write-token")
 MAX_NOTE = 256 * 1024
 MAX_IMAGE = 10 * 1024 * 1024
 MAX_REQUEST = 15 * 1024 * 1024
+MAX_RESPONSE = 15 * 1024 * 1024
 GUARD = threading.RLock()
 
 
@@ -141,6 +142,28 @@ def dispatch(data: dict) -> dict:
         raise ValueError("JSON object required")
     op = data.get("operation")
     with GUARD:
+        if op == "read_image":
+            name = data.get("path")
+            if not isinstance(name, str) or not name.startswith("Attachments/"):
+                raise ValueError("Only vault Attachments images are readable")
+            ext = Path(name).suffix.lower()
+            if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                raise ValueError("Unsupported attachment type")
+            path = vault_path(name, suffix=ext)
+            if not path.is_file() or path.is_symlink():
+                raise ValueError("Image not found")
+            if not 0 < path.stat().st_size <= MAX_IMAGE:
+                raise ValueError("Invalid attachment size")
+            raw = path.read_bytes()
+            if ext == ".png" and not raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+                raise ValueError("Invalid PNG")
+            if ext in (".jpg", ".jpeg") and not raw.startswith(b"\\xff\\xd8\\xff"):
+                raise ValueError("Invalid JPEG")
+            if ext == ".gif" and not raw.startswith((b"GIF87a", b"GIF89a")):
+                raise ValueError("Invalid GIF")
+            if ext == ".webp" and not (len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"):
+                raise ValueError("Invalid WebP")
+            return {"path": name, "image_base64": base64.b64encode(raw).decode("ascii")}
         if op == "inspect":
             path = vault_path(data.get("path"))
             content, digest = get_content(path)
