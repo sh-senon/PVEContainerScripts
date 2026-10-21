@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.9.0
+version: 1.9.1
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -485,6 +485,23 @@ class Tools:
         return json.dumps(report, ensure_ascii=False, indent=2)
 
     @staticmethod
+    def _incident_metadata(content: str) -> dict:
+        """Read YAML scalar metadata without relying on multiline regex matching."""
+        if not isinstance(content, str):
+            return {}
+        lines = content.lstrip("\\ufeff").replace("\\r\\n", "\\n").splitlines()
+        if not lines or lines[0].strip() != "---":
+            return {}
+        fields = {}
+        for line in lines[1:]:
+            if line.strip() == "---":
+                break
+            match = re.match(r"^([A-Za-z][A-Za-z0-9_-]*):[ \\t]*(.*)$", line)
+            if match:
+                fields[match.group(1).lower()] = match.group(2).strip().strip("\\"'")
+        return fields
+
+    @staticmethod
     def _incident_path(environment: str, title: str) -> str:
         if environment not in ("Work", "Homelab"):
             raise ValueError("Environment must be Work or Homelab.")
@@ -565,7 +582,7 @@ class Tools:
         if not original["exists"]:
             return "Incident note not found. Use start_incident first."
         content = original["content"]
-        if not re.search(r"(?m)^type:\\s*incident\\s*$", content):
+        if self._incident_metadata(content).get("type", "").casefold() != "incident":
             return "Refusing to update a note not marked type: incident."
         from datetime import date
         entry = (
@@ -618,7 +635,7 @@ class Tools:
         if not original["exists"]:
             return "Incident not found."
         content = original["content"]
-        if not re.search(r"(?m)^type:\\s*incident\\s*$", content):
+        if self._incident_metadata(content).get("type", "").casefold() != "incident":
             return "Not an incident note."
         def replace_section(body, heading, replacement):
             pattern = re.compile(r"(?ms)^## " + re.escape(heading) + r"\\n.*?(?=^## |\\Z)")
