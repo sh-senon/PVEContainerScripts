@@ -28,12 +28,20 @@ def metadata(text):
 
 
 def redirect_target(text):
-    # A redirect is a short note explicitly declaring its destination.
-    body = re.sub(r'^---\\n.*?\\n---\\n', '', text, count=1, flags=re.S).strip()
-    found = re.search(r'This note has moved to\\s+\\*\\*\\[\\[([^]\\n]+)\\]\\]\\*\\*', body, flags=re.I)
-    if found and len(body) < 500 and ('# ' in body or 'moved' in body.lower()):
-        return found.group(1).split('|', 1)[0].strip()
-    return None
+    """Recognize short, explicit redirect stubs; do not infer redirects from titles."""
+    body = text
+    if body.startswith("---\\n"):
+        boundary = body.find("\\n---\\n", 4)
+        if boundary >= 0:
+            body = body[boundary + 5:]
+    marker = "This note has moved to **[["
+    pos = body.find(marker)
+    if pos < 0 or len(body) >= 500:
+        return None
+    closing = body.find("]]**", pos + len(marker))
+    if closing < 0:
+        return None
+    return body[pos + len(marker):closing].split("|", 1)[0].strip() or None
 
 
 def analyze(root):
