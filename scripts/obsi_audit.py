@@ -77,8 +77,18 @@ def analyze(root):
     for paths in groups_hash.values():
         if len(paths)>1: issues.append({'kind':'identical_content', 'paths':paths})
     for paths in groups_title.values():
-        if len(paths)>1 and not any(next(n for n in notes if n['path'] == p)['redirect_to'] for p in paths):\n            issues.append({'kind':'same_title_candidate', 'paths':paths})
-    incoming=collections.defaultdict(list)\n    for source in notes:\n        for link in source['links']:\n            normalized=link.removesuffix('.md')\n            for target in notes:\n                target_norm=target['path'].removesuffix('.md')\n                if normalized == target_norm or ('/' not in normalized and normalized.lower() == target['title'].lower()):\n                    incoming[target['path']].append(source['path'])\n    for n in notes:\n        p=n['path']
+        if len(paths)>1 and not any(next(n for n in notes if n['path'] == p)['redirect_to'] for p in paths):
+            issues.append({'kind':'same_title_candidate', 'paths':paths})
+    incoming=collections.defaultdict(list)
+    for source in notes:
+        for link in source['links']:
+            normalized=link.removesuffix('.md')
+            for target in notes:
+                target_norm=target['path'].removesuffix('.md')
+                if normalized == target_norm or ('/' not in normalized and normalized.lower() == target['title'].lower()):
+                    incoming[target['path']].append(source['path'])
+    for n in notes:
+        p=n['path']
         if n['redirect_to']:
             issues.append({'kind':'redirect_placeholder','path':p,'target':n['redirect_to'],
                            'incoming_links':sorted(set(incoming[p])),
@@ -104,7 +114,9 @@ def analyze(root):
             'limitations':['Same titles do not prove duplicate content.',
                            'Different facts or values cannot be reliably labeled conflicts without contextual review.',
                            'Missing last-verified is not evidence that a system is unverified.',
-                           'Unqualified wiki-links are matched by note basename only.',\n                           'Environment mismatch flags are conservative heuristics, not proof.',\n                           'Redirect removal requires reviewing backlinks outside this vault too.']]}
+                           'Unqualified wiki-links are matched by note basename only.',
+                           'Environment mismatch flags are conservative heuristics, not proof.',
+                           'Redirect removal requires reviewing backlinks outside this vault too.']]}
 
 if __name__=='__main__':
     ap=argparse.ArgumentParser()
