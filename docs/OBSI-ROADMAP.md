@@ -82,6 +82,18 @@ Architecture: Open WebUI UI plus MCP knowledge retrieval, an authenticated note-
 - [ ] Recurrence detection, incident-to-system links, reopening, change history.
 - [ ] Improve recording of troubleshooting during ordinary chat.
 
+### P2a: Web-assisted troubleshooting (proposed, not implemented)
+- [ ] Search permitted internal KB and incident history first, ranking verified fixes and relevant systems.
+- [ ] When local evidence is insufficient, research current official vendor documentation and selected credible external sources with links and retrieval dates.
+- [ ] Minimize external queries: never send internal hostnames, user identifiers, tenant IDs, confidential error details or screenshots to external search without explicit authorization.
+- [ ] Start or continue a scoped incident, recording symptoms, diagnostic evidence, attempted steps and observed outcomes. Avoid unnecessary duplicate tickets.
+- [ ] If a step fails, re-evaluate assumptions, check for contradictory/outdated internal notes, consult new sources, and ask focused follow-up questions.
+- [ ] Do not automatically overwrite shared KB procedures because one user had a different outcome; propose an evidence-backed correction with approval.
+- [ ] On resolution, record the exact action and actual successful verification, then link to systems, vendor sources and prior incidents.
+- [ ] Provide human approval for note edits and any production-changing actions; normal internet browsing can be automated within safe data boundaries.
+- [ ] Allow both users to retrieve newly verified solutions from shared knowledge, not private chat context alone.
+- [ ] Choose web tool/integration and test permissions, external processing and source reliability before deployment.
+
 ### P3: Knowledge intelligence
 - [ ] Evidence-backed service dependency mapping.
 - [ ] Freshness and verification tracking, conflict detection.
@@ -111,6 +123,8 @@ Architecture: Open WebUI UI plus MCP knowledge retrieval, an authenticated note-
 First fix test incident handling and formatting; then test complete incident closure. Next diagnose shared knowledge access for the colleague. Then advance semantic retrieval and dependency mapping. Plan Work security before importing sensitive company material.
 
 ## Change log
+
+2026-10-21: Added planned KB-first web-assisted troubleshooting and adaptive incident learning workflow; not yet implemented.
 
 2026-10-21: Proposed read-only specialist agents and their security/operational safeguards; not implemented.
 
