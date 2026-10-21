@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.4.0
+version: 1.5.0
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -292,3 +292,14 @@ class Tools:
         return (f"Saved original screenshot: {result['attachment']}\n"
                 f"{result['status'].capitalize()} note: {result['path']}\n"
                 f"Obsidian embed: {result['embed']}")
+
+    def audit_knowledge_base(self) -> str:
+        """
+        Run a read-only audit of the Obsi vault. Identify redirect notes,
+        potential duplicates, unresolved links and missing metadata.
+        Do not modify, merge, move or delete any notes.
+        """
+        report = self._request("audit_knowledge_base")
+        if report.get("mode") != "read_only":
+            return "Audit failed: backend did not confirm read-only mode."
+        return json.dumps(report, ensure_ascii=False, indent=2)
