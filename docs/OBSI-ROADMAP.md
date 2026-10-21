@@ -118,11 +118,29 @@ Architecture: Open WebUI UI plus MCP knowledge retrieval, an authenticated note-
 - [ ] Enforce per-environment authorization and keep confidential Work data on an approved inference path.
 - [ ] No autonomous note edits or infrastructure changes; user approval remains mandatory.
 
+## Development pause checkpoint (2026-10-21)
+
+Development paused at user's request. Resume from this order:
+1. Complete incident lifecycle: investigation formatting, placeholders, test-data exclusion, new-note regression, resolution approval and verification.
+2. Diagnose two-account shared note retrieval (same model/tools/permissions in clean chats).
+3. Add automated syntax/regression tests and versioned deployment/rollback.
+4. Implement KB-first internet-assisted troubleshooting and adaptive incident learning with authorized external search.
+5. Add semantic incident matching and evidence-backed dependency discovery.
+6. Introduce read-only scheduled specialist agents, starting with Knowledge Guardian.
+7. Improve freshness, contradictions, audit intelligence and operational runbooks.
+8. Secure and authorize Work deployment, provenance, access, backups and controlled document import (security is a prerequisite, not something to defer until after features).
+
+Verified at pause: a fictional Homelab Jellyfin incident exists, legacy literal newline serialization was repaired, approved investigation progress saved. Incident closing and fresh v1.9.2 creation have not been proven live. Do not treat GitHub version as confirmation of installed tool version.
+
+To resume: read this file and ask to continue Obsi development from the checkpoint. Review actual deployed versions and most recent findings before making changes.
+
 ## Next actions
 
 First fix test incident handling and formatting; then test complete incident closure. Next diagnose shared knowledge access for the colleague. Then advance semantic retrieval and dependency mapping. Plan Work security before importing sensitive company material.
 
 ## Change log
+
+2026-10-21: Recorded development pause and explicit resumption order.
 
 2026-10-21: Added planned KB-first web-assisted troubleshooting and adaptive incident learning workflow; not yet implemented.
 
