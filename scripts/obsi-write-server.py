@@ -143,6 +143,12 @@ def dispatch(data: dict) -> dict:
         raise ValueError("JSON object required")
     op = data.get("operation")
     with GUARD:
+        if op == "search_incident_memory":
+            scanner = Path("/opt/obsi_incidents.py")
+            if not scanner.is_file() or scanner.is_symlink():
+                raise ValueError("Incident lookup script not installed")
+            module = runpy.run_path(str(scanner), run_name="obsi_incident_module")
+            return module["search"](ROOT, data.get("query"), data.get("environment", "Work"), data.get("limit", 8))
         if op == "discover_relationships":
             scanner = Path("/opt/obsi_relationships.py")
             if not scanner.is_file() or scanner.is_symlink():
