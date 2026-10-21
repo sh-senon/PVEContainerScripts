@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.6.0
+version: 1.7.0
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -455,4 +455,14 @@ class Tools:
         report = self._request("audit_knowledge_base")
         if report.get("mode") != "read_only":
             return "Audit failed: backend did not confirm read-only mode."
+        return json.dumps(report, ensure_ascii=False, indent=2)
+
+    def discover_relationships(self) -> str:
+        """
+        Discover existing note links and candidate relations within each environment.
+        Read-only. Do not invent dependencies or modify documentation.
+        """
+        report = self._request("discover_relationships")
+        if report.get("mode") != "read_only":
+            return "Relationship discovery failed: read-only mode not confirmed."
         return json.dumps(report, ensure_ascii=False, indent=2)
