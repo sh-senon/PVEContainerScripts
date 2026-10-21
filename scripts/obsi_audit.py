@@ -27,6 +27,15 @@ def metadata(text):
     return values
 
 
+def redirect_target(text):
+    # A redirect is a short note explicitly declaring its destination.
+    body = re.sub(r'^---\\n.*?\\n---\\n', '', text, count=1, flags=re.S).strip()
+    found = re.search(r'This note has moved to\\s+\\*\\*\\[\\[([^]\\n]+)\\]\\]\\*\\*', body, flags=re.I)
+    if found and len(body) < 500 and ('# ' in body or 'moved' in body.lower()):
+        return found.group(1).split('|', 1)[0].strip()
+    return None
+
+
 def analyze(root):
     root = root.resolve()
     if not root.is_dir() or not (root / '.obsi-storage-check').is_file():
@@ -55,7 +64,7 @@ def analyze(root):
                     refs.append(ref)
             notes.append({'path':path.relative_to(root).as_posix(), 'title':path.stem,
                           'hash':hashlib.sha256(raw).hexdigest(), 'metadata':metadata(text),
-                          'links':refs,'ip_home':bool(IP_HOME.search(text)),
+                          'links':refs, 'redirect_to':redirect_target(text), 'ip_home':bool(IP_HOME.search(text)),
                           'ip_work':bool(IP_WORK.search(text))})
     groups_title=collections.defaultdict(list); groups_hash=collections.defaultdict(list)
     stem_map=collections.defaultdict(list)
@@ -68,14 +77,17 @@ def analyze(root):
     for paths in groups_hash.values():
         if len(paths)>1: issues.append({'kind':'identical_content', 'paths':paths})
     for paths in groups_title.values():
-        if len(paths)>1: issues.append({'kind':'same_title_candidate', 'paths':paths})
-    for n in notes:
-        p=n['path']
-        if p.startswith('Infrastructure/'):
+        if len(paths)>1 and not any(next(n for n in notes if n['path'] == p)['redirect_to'] for p in paths):\n            issues.append({'kind':'same_title_candidate', 'paths':paths})
+    incoming=collections.defaultdict(list)\n    for source in notes:\n        for link in source['links']:\n            normalized=link.removesuffix('.md')\n            for target in notes:\n                target_norm=target['path'].removesuffix('.md')\n                if normalized == target_norm or ('/' not in normalized and normalized.lower() == target['title'].lower()):\n                    incoming[target['path']].append(source['path'])\n    for n in notes:\n        p=n['path']
+        if n['redirect_to']:
+            issues.append({'kind':'redirect_placeholder','path':p,'target':n['redirect_to'],
+                           'incoming_links':sorted(set(incoming[p])),
+                           'action':'review incoming links and Obsidian references before removal'})
+        elif p.startswith('Infrastructure/'):
             issues.append({'kind':'legacy_folder','path':p})
-        if (p.startswith('Homelab/') and n['ip_work']) or (p.startswith('Work/') and n['ip_home']):
+        if not n['redirect_to'] and (p.startswith('Homelab/') and n['ip_work'] and not n['ip_home'] or p.startswith('Work/') and n['ip_home'] and not n['ip_work']):
             issues.append({'kind':'possible_environment_mismatch','path':p})
-        missing=[f for f in FIELDS if not n['metadata'].get(f)]
+        missing=[f for f in FIELDS if not n['metadata'].get(f)] if not n['redirect_to'] else []
         if missing: issues.append({'kind':'missing_metadata','path':p,'fields':missing})
         for link in n['links']:
             if link.startswith('Attachments/'):
@@ -88,11 +100,11 @@ def analyze(root):
             issues.append({'kind':'unresolved_wikilink','path':p,'link':link})
     return {'mode':'read_only', 'notes_checked':len(notes),'issue_count':len(issues),
             'issues':issues, 'notes':[{'path':n['path'],'metadata':n['metadata'],
-                                     'outgoing_links':len(n['links'])} for n in notes],
+                                     'outgoing_links':len(n['links']), 'redirect_to':n['redirect_to']} for n in notes],
             'limitations':['Same titles do not prove duplicate content.',
                            'Different facts or values cannot be reliably labeled conflicts without contextual review.',
                            'Missing last-verified is not evidence that a system is unverified.',
-                           'Unqualified wiki-links are matched by note basename only.']}
+                           'Unqualified wiki-links are matched by note basename only.',\n                           'Environment mismatch flags are conservative heuristics, not proof.',\n                           'Redirect removal requires reviewing backlinks outside this vault too.']]}
 
 if __name__=='__main__':
     ap=argparse.ArgumentParser()
