@@ -196,12 +196,24 @@ def dispatch(data: dict) -> dict:
             name = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:12] + ext
             image_path = vault_path("Attachments/" + name, suffix=ext)
             embed = "![[Attachments/" + name + "]]"
-            section = "\n\n## Screenshot\n\n" + (description.strip() + "\n\n" if description.strip() else "") + embed + "\n"
+            label = data.get("label") or "Technical screenshot"
+            if not isinstance(label, str) or not 1 <= len(label.strip()) <= 100 or "\n" in label or "\r" in label:
+                raise ValueError("Invalid screenshot heading")
+            label = label.strip().lstrip("#").strip()
+            if not label:
+                raise ValueError("Invalid screenshot heading")
+            entry = "### " + label + "\n\n" + (description.strip() + "\n\n" if description.strip() else "") + embed + "\n"
             if current is None:
                 title = path.stem.replace("_", " ").replace("-", " ")
-                updated = "# " + title + section
+                updated = "# " + title + "\n\n## Screenshots\n\n" + entry
             else:
-                updated = current.rstrip() + section
+                section_match = re.search(r"(?m)^## Screenshots[ \t]*$", current)
+                if section_match:
+                    following = re.search(r"(?m)^## (?!#)", current[section_match.end():])
+                    position = section_match.end() + following.start() if following else len(current)
+                    updated = current[:position].rstrip() + "\n\n" + entry + "\n" + current[position:].lstrip("\n")
+                else:
+                    updated = current.rstrip() + "\n\n## Screenshots\n\n" + entry
             note_raw = note_bytes(updated)
             exclusive_create(image_path, raw)
             try:
