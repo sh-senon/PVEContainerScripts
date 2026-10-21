@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import re
+import runpy
 import tempfile
 import threading
 import uuid
@@ -142,6 +143,15 @@ def dispatch(data: dict) -> dict:
         raise ValueError("JSON object required")
     op = data.get("operation")
     with GUARD:
+        if op == "audit_knowledge_base":
+            auditor = Path("/opt/obsi_audit.py")
+            if not auditor.is_file() or auditor.is_symlink():
+                raise ValueError("Audit script not installed")
+            audit = runpy.run_path(str(auditor), run_name="obsi_audit_module")
+            result = audit["analyze"](ROOT)
+            if not isinstance(result, dict) or result.get("mode") != "read_only":
+                raise ValueError("Unexpected audit response")
+            return result
         if op == "read_image":
             name = data.get("path")
             if not isinstance(name, str) or not name.startswith("Attachments/"):
