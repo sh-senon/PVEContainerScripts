@@ -1,7 +1,7 @@
 """
 title: Obsi Hybrid Vault Writer
 author: Obsi
-version: 1.1.0
+version: 1.2.0
 description: Creates new TrueNAS Markdown notes automatically; asks before editing existing notes.
 """
 
@@ -9,6 +9,7 @@ import base64
 import difflib
 import json
 import re
+import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -177,6 +178,75 @@ class Tools:
             if cls._is_image(raw):
                 candidates.append(raw)
         return candidates
+
+    async def view_saved_screenshot(self, attachment_path: str, __user__=None) -> str:
+        """
+        Display an existing TrueNAS image in chat via Open WebUI's authenticated file API.
+        Only files inside the vault Attachments/ directory are supported.
+
+        :param attachment_path: Vault relative screenshot path, e.g. Attachments/20261020-160352-481abc45080e.png
+        """
+        from open_webui.models.files import Files, FileForm
+
+        user_id = (__user__ or {}).get("id")
+        if not user_id:
+            return "Screenshot not displayed: no authenticated Open WebUI user."
+        if not isinstance(attachment_path, str) or not attachment_path.startswith("Attachments/"):
+            return "Screenshot not displayed: expected an Attachments/ image path."
+
+        secret = self.TOKEN_FILE.read_text(encoding="ascii").strip()
+        request = Request(
+            self.WRITE_URL,
+            data=json.dumps({"operation": "read_image", "path": attachment_path}).encode("utf-8"),
+            method="POST",
+            headers={"Authorization": "Bearer " + secret, "Content-Type": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=40) as response:
+                payload = response.read(15 * 1024 * 1024 + 1)
+            if len(payload) > 15 * 1024 * 1024:
+                return "Screenshot too large to display."
+            result = json.loads(payload)
+            raw = base64.b64decode(result["image_base64"], validate=True)
+        except HTTPError as error:
+            return f"Screenshot unavailable (knowledge server HTTP {error.code})."
+        except (URLError, TimeoutError, KeyError, ValueError, json.JSONDecodeError):
+            return "Screenshot retrieval failed. No copy was created."
+
+        if len(raw) > self.MAX_IMAGE or not self._is_image(raw):
+            return "Invalid or oversized image returned by knowledge server."
+        ext = Path(attachment_path).suffix.lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+            return "Unsupported image extension."
+        file_id = str(uuid.uuid4())
+        filename = file_id + "_obsi-view" + ext
+        destination = self.UPLOAD_ROOT / filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with destination.open("xb") as output:
+                output.write(raw)
+            destination.chmod(0o600)
+            file_record = await Files.insert_new_file(
+                user_id,
+                FileForm(
+                    id=file_id,
+                    filename="obsi-view" + ext,
+                    path=str(destination),
+                    data={"status": "completed"},
+                    meta={"name": "obsi-view" + ext,
+                          "content_type": "image/jpeg" if ext in (".jpg", ".jpeg") else "image/" + ("webp" if ext == ".webp" else ext[1:]),
+                          "size": len(raw)},
+                ),
+            )
+            if file_record is None:
+                raise ValueError("Could not register image")
+        except Exception:
+            destination.unlink(missing_ok=True)
+            return "Could not register screenshot with Open WebUI. Nothing displayed."
+        image_url = "/api/v1/files/" + file_id + "/content"
+        return (f"Screenshot retrieved from {attachment_path}.\\n"
+                f"Display using this exact Markdown, without altering the URL:\\n"
+                f"![Saved Obsi screenshot]({image_url})")
 
     async def save_screenshot_to_note(
         self, path: str, description: str = "", image_index: int = 0,
